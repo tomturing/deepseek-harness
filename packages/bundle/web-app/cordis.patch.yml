@@ -154,6 +154,10 @@
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
 
+    # 工单日志同步：从远端拉取加密包、递归解压到叶子，把目录交给客户端登记为工作区。
+    - id: ticket-sync
+      name: '@deepseek-ai/dsh-api-ticket-sync'
+
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 
@@ -360,6 +364,10 @@
 
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
+
+    # 工单入口：与目录选择器共用同一个"添加工作区"菜单，客户端半边由 dsh.client 声明发现。
+    - id: ui-ticket-sync
+      name: '@deepseek-ai/dsh-client-ui-ticket-sync'
 
     # Durable workflow lifecycle as an independent Chat node after the
     # existing generic workflow tool row.

@@ -914,6 +914,7 @@ export function WorkspaceBrowser({
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
+  useTicketFlow,
   useHostInfo,
   useShortcuts,
   useWorkspaceShortcuts,
@@ -1369,6 +1370,8 @@ export function WorkspaceBrowser({
           createWorkspace={createWorkspace}
           useDirectoryFlow={useDirectoryFlow}
           renderDirectoryFlow={owner => renderSlot('sidebar.workspaces.directoryFlow', owner)}
+          useTicketFlow={useTicketFlow}
+          renderTicketFlow={owner => renderSlot('sidebar.workspaces.ticketFlow', owner)}
           addOnly
           onBusyChange={setDirectoryBusy}
           side="right"

@@ -119,6 +119,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /** Ticket-sync hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
+    'conversation.hero.workspace.ticketFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /** Ticket-sync hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
+    'sidebar.workspaces.ticketFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /**
      * Leading decoration of one Session row, in the 16px cell before the title
      * that the row's own state dot otherwise occupies. A higher-priority state
@@ -195,6 +199,11 @@ export type DirectoryFlowSlotName =
   | 'conversation.hero.workspace.directoryFlow'
   | 'sidebar.workspaces.directoryFlow'
 
+/** The two ticket-flow holes; the ticket package registers one dialog into both. */
+export type TicketFlowSlotName =
+  | 'conversation.hero.workspace.ticketFlow'
+  | 'sidebar.workspaces.ticketFlow'
+
 /**
  * Directory-picking share both trigger surfaces consume. Occupancy rides the
  * inject face's reserved `hooks` compartment: the renderer binds the source
@@ -213,12 +222,24 @@ export type DirectoryPickingInjected = {
 export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']>
 
 /**
+ * Ticket-picking share both trigger surfaces consume. Same reserved `hooks`
+ * compartment as the directory flow: an empty hole hides the "Sync from
+ * ticket…" entry reactively and withdraws an open flow whose occupant left.
+ */
+export type TicketPickingInjected = {
+  hooks: {
+    /** True while this surface's ticket-flow hole is occupied. */
+    ticketFlow: HostObservable<boolean>
+  }
+}
+
+/**
  * Browser-private injected share (arrives via the register inject factory).
  * Data reads use the global framework hooks; these are the Host actions the
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = {
-  hooks: DirectoryPickingInjected['hooks'] & {
+  hooks: DirectoryPickingInjected['hooks'] & TicketPickingInjected['hooks'] & {
     /**
      * Fixed Host facts, reached through a hook rather than injected as values:
      * the renderer memoizes an entry's inject result for the registration's
@@ -469,6 +490,7 @@ export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
   & PropsRenderSlots<
     | 'sidebar.workspaces.directoryFlow'
+    | 'sidebar.workspaces.ticketFlow'
     | 'sidebar.workspaces.session.menu.item'
     | 'sidebar.workspaces.session.row.action'
     | 'sidebar.session.row.leading'
@@ -484,7 +506,7 @@ export type WorkspaceBrowserProps =
  * callback; this callback creates only the real Host Workspace. A type alias
  * supplies the implicit index signature required by the registry.
  */
-export type WorkspacePickerInjected = DirectoryPickingInjected & {
+export type WorkspacePickerInjected = DirectoryPickingInjected & TicketPickingInjected & {
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
 }
@@ -496,7 +518,10 @@ export type WorkspacePickerInjected = DirectoryPickingInjected & {
  */
 export type WorkspacePickerProps =
   PropsRuntime<'conversation.hero.workspace'>
-  & PropsRenderSlots<'conversation.hero.workspace.directoryFlow'>
+  & PropsRenderSlots<
+    | 'conversation.hero.workspace.directoryFlow'
+    | 'conversation.hero.workspace.ticketFlow'
+  >
   & Omit<WorkspacePickerInjected, 'hooks'>
   & PropsHooks<WorkspacePickerInjected['hooks']>
   & PropsLocale<'workspace'>

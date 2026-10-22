@@ -22,6 +22,7 @@ import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/s
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
+const ADD_TICKET = '::sync-ticket'
 
 /** Core flow props: the owner supplies popover control and pick semantics. */
 export interface WorkspacePickFlowProps {
@@ -39,6 +40,10 @@ export interface WorkspacePickFlowProps {
   useDirectoryFlow: SnapshotSelectorHook<boolean>
   /** Render this surface's directory-flow hole with the owner conversation (the entry's narrowed renderSlot). */
   renderDirectoryFlow: (owner: DirectoryFlowOwnerProps) => ReactNode
+  /** Bound occupancy selector hook for this surface's ticket-flow hole. */
+  useTicketFlow: SnapshotSelectorHook<boolean>
+  /** Render this surface's ticket-flow hole with the owner conversation. */
+  renderTicketFlow: (owner: DirectoryFlowOwnerProps) => ReactNode
   /** A real Workspace was picked or created. */
   onPick: (workspaceId: WorkspaceId) => void
   /** Close the popover (outside click / Escape / post-pick). */
@@ -66,6 +71,8 @@ export function WorkspacePickFlow({
   createWorkspace,
   useDirectoryFlow,
   renderDirectoryFlow,
+  useTicketFlow,
+  renderTicketFlow,
   onPick,
   onClose,
   addOnly = false,
@@ -83,11 +90,12 @@ export function WorkspacePickFlow({
   const [modalError, setModalError] = useState<string | null>(null)
   const [flowOpen, setFlowOpen] = useState(false)
   const [pickingFolder, setPickingFolder] = useState(false)
+  const [ticketFlowOpen, setTicketFlowOpen] = useState(false)
   // One picking interaction at a time: while the flow is open (native chooser
   // pending, browse dialog up) or its pick is being adopted, every other
   // menu action stays disabled — a late outcome must not race a concurrent
   // selection or adoption.
-  const flowBusy = flowOpen || pickingFolder
+  const flowBusy = flowOpen || ticketFlowOpen || pickingFolder
   useEffect(() => { onBusyChange?.(flowBusy) }, [flowBusy, onBusyChange])
 
   // The occupied hole gates the picking affordance: with no composed flow the
@@ -95,6 +103,8 @@ export function WorkspacePickFlow({
   // framework-bound hook keeps occupancy live: flow plugins activate (and
   // HMR-reload) independently of this menu's renders.
   const flowAvailable = useDirectoryFlow(occupied => occupied)
+  // 工单洞的占用度与目录洞同源：空洞时菜单项不出现，洞中途卸载则撤回已开面板。
+  const ticketFlowAvailable = useTicketFlow(occupied => occupied)
   // An occupant that unloads mid-interaction leaves nobody to cancel: an
   // open flow over an empty hole withdraws so the menu actions come back.
   // flowOpen is a dependency because the flow can also OPEN over an already
@@ -103,9 +113,17 @@ export function WorkspacePickFlow({
   useEffect(() => {
     if (flowOpen && !flowAvailable) setFlowOpen(false)
   }, [flowOpen, flowAvailable])
-  const addEntries: MenuEntry[] = flowAvailable
-    ? [{ id: ADD_WORKSPACE, label: t('menu.addWorkspace'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy }]
-    : []
+  useEffect(() => {
+    if (ticketFlowOpen && !ticketFlowAvailable) setTicketFlowOpen(false)
+  }, [ticketFlowOpen, ticketFlowAvailable])
+  const addEntries: MenuEntry[] = [
+    ...flowAvailable
+      ? [{ id: ADD_WORKSPACE, label: t('menu.addWorkspace'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy }]
+      : [],
+    ...ticketFlowAvailable
+      ? [{ id: ADD_TICKET, label: t('menu.syncTicket'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy }]
+      : [],
+  ]
   // With workspaces listed, the add action pins below the scroll region
   // (divider + always visible); otherwise it IS the menu.
   const pinAdd = !addOnly && workspaces.length > 0
@@ -127,14 +145,21 @@ export function WorkspacePickFlow({
     setModalError(null)
   }
 
-  /** Adopt a picked directory; failures land in the folder-error dialog (Choose again reopens the flow). */
+  /**
+   * 采纳一次已选定的路径。
+   *
+   * 目录洞与工单洞共用同一份采纳语义，所以两个洞的请求必须一起撤回：
+   * 只撤回目录洞会让工单对话框在成功或失败后都挂在屏幕上。
+   */
   const adoptDirectory = (path: string): Promise<void> =>
     createWorkspace({ path }).then((workspace) => {
       setFlowOpen(false)
+      setTicketFlowOpen(false)
       onPick(workspace.workspaceId)
     }).catch((reason: unknown) => {
       setModalError(reason instanceof Error ? reason.message : String(reason))
       setFlowOpen(false)
+      setTicketFlowOpen(false)
       setErrorOpen(true)
     })
 
@@ -142,7 +167,16 @@ export function WorkspacePickFlow({
     onClose()
     setErrorOpen(false)
     setModalError(null)
+    setTicketFlowOpen(false)
     setFlowOpen(true)
+  }, [onClose])
+
+  const openTicketFlow = useCallback((): void => {
+    onClose()
+    setErrorOpen(false)
+    setModalError(null)
+    setFlowOpen(false)
+    setTicketFlowOpen(true)
   }, [onClose])
 
   // A menu exists to disambiguate between targets. With no workspaces listed
@@ -157,9 +191,13 @@ export function WorkspacePickFlow({
   const addIsTheOnlyEntry = !pinAdd && listSettled && addEntries.length === 1
   // `flowBusy` gates this exactly as it disables the equivalent menu entry: a
   // pick still being adopted owns the surface until it settles.
+  // 唯一一项时锚点手势就是那一项；两项都可用时先弹菜单让操作者选。
+  const onlyEntryId = addIsTheOnlyEntry ? addEntries[0]?.id : undefined
   useEffect(() => {
-    if (open && addIsTheOnlyEntry && !flowBusy) openDirectoryFlow()
-  }, [open, addIsTheOnlyEntry, flowBusy, openDirectoryFlow])
+    if (!open || onlyEntryId === undefined || flowBusy) return
+    if (onlyEntryId === ADD_TICKET) openTicketFlow()
+    else openDirectoryFlow()
+  }, [open, onlyEntryId, flowBusy, openDirectoryFlow, openTicketFlow])
 
   /** Owner side of the flow conversation: adopt keeps the flow open (busy) until the Host answers. */
   const flowOwner: DirectoryFlowOwnerProps = {
@@ -177,9 +215,29 @@ export function WorkspacePickFlow({
     },
   }
 
+  // 工单入口与目录入口共用同一份 adopt 语义（onPicked → createWorkspace）。
+  const ticketFlowOwner: DirectoryFlowOwnerProps = {
+    open: ticketFlowOpen,
+    busy: pickingFolder,
+    onPicked: (path) => {
+      setPickingFolder(true)
+      void adoptDirectory(path).finally(() => { setPickingFolder(false) })
+    },
+    onCancel: () => { setTicketFlowOpen(false) },
+    onError: (message) => {
+      setTicketFlowOpen(false)
+      setModalError(message)
+      setErrorOpen(true)
+    },
+  }
+
   const handleSelect = (id: string): void => {
     if (id === ADD_WORKSPACE) {
       openDirectoryFlow()
+      return
+    }
+    if (id === ADD_TICKET) {
+      openTicketFlow()
       return
     }
     onPick(id as WorkspaceId)
@@ -201,6 +259,7 @@ export function WorkspacePickFlow({
       />
       {open && !addIsTheOnlyEntry && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && <div className={css.menuStatus} role="status">{t('picker.loading')}</div>}
       {renderDirectoryFlow(flowOwner)}
+      {renderTicketFlow(ticketFlowOwner)}
       <Modal
         open={errorOpen}
         onClose={closeModal}
@@ -236,6 +295,7 @@ export function WorkspacePicker({
   onClose,
   createWorkspace,
   useDirectoryFlow,
+  useTicketFlow,
   renderSlot,
   t,
 }: WorkspacePickerProps) {
@@ -248,6 +308,8 @@ export function WorkspacePicker({
       createWorkspace={createWorkspace}
       useDirectoryFlow={useDirectoryFlow}
       renderDirectoryFlow={owner => renderSlot('conversation.hero.workspace.directoryFlow', owner)}
+      useTicketFlow={useTicketFlow}
+      renderTicketFlow={owner => renderSlot('conversation.hero.workspace.ticketFlow', owner)}
       selectedId={selectedId}
       onPick={onPick}
       onClose={onClose}

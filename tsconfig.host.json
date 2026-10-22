@@ -331,6 +331,7 @@
     { "path": "./packages/api/settings-controller" },
     { "path": "./packages/api/remote-access/tsconfig.host.json" },
     { "path": "./packages/api/workspace-controller/tsconfig.host.json" },
+    { "path": "./packages/api/ticket-sync/tsconfig.host.json" },
     { "path": "./packages/typert/loader" },
     { "path": "./packages/session/session-persistence" },
     { "path": "./packages/session/session-format" },

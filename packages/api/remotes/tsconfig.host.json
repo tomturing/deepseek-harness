@@ -72,6 +72,9 @@
       "path": "../workspace-controller/tsconfig.host.json"
     },
     {
+      "path": "../ticket-sync/tsconfig.host.json"
+    },
+    {
       "path": "../../typert/protocol"
     },
     {

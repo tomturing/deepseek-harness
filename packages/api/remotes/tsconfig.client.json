@@ -91,6 +91,12 @@
       "path": "../workspace-controller/tsconfig.client.json"
     },
     {
+      "path": "../../host/directory-picker"
+    },
+    {
+      "path": "../ticket-sync/tsconfig.client.json"
+    },
+    {
       "path": "../../typert/protocol"
     },
     {
