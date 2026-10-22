@@ -1,0 +1,17 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../ui-slots" },
+    { "path": "../../api/remotes/tsconfig.client.json" },
+    { "path": "../../api/ticket-sync/tsconfig.client.json" },
+    { "path": "../locale/tsconfig.client.json" },
+    { "path": "../ui-renderer" },
+    { "path": "../ui-workspace" }
+  ]
+}

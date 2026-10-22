@@ -56,18 +56,36 @@ function anchor(): { current: HTMLElement } {
  * package would, and renders a marker element while the flow is open.
  */
 function flowProbe() {
-  const probe: { owner: DirectoryFlowOwnerProps | undefined } = { owner: undefined }
-  const renderSlot = ((_name: string, owner: DirectoryFlowOwnerProps) => {
-    probe.owner = owner
-    return owner.open ? <div data-testid="directory-flow" data-busy={owner.busy} /> : null
+  const probe: {
+    owner: DirectoryFlowOwnerProps | undefined
+    ticketOwner: DirectoryFlowOwnerProps | undefined
+  } = { owner: undefined, ticketOwner: undefined }
+  // 两个洞共用同一个 renderSlot 入口：必须按洞名区分，否则后渲染的工单
+  // owner 会覆盖目录 owner，让"谁在驱动对话"变得不可判定。
+  const renderSlot = ((name: string, owner: DirectoryFlowOwnerProps) => {
+    if (name === 'conversation.hero.workspace.directoryFlow') {
+      probe.owner = owner
+      return owner.open ? <div data-testid="directory-flow" data-busy={owner.busy} /> : null
+    }
+    if (name === 'conversation.hero.workspace.ticketFlow') {
+      probe.ticketOwner = owner
+      return owner.open ? <div data-testid="ticket-flow" data-busy={owner.busy} /> : null
+    }
+    return null
   }) as never
   return { probe, renderSlot }
 }
 
-/** Manual occupancy source bound like the renderer would: flip() drives the hook like a real registration change. */
-function occupancySource(initial = true) {
+/**
+ * Manual occupancy source bound like the renderer would: flip() drives the hook
+ * like a real registration change. 工单洞默认未被占用 —— 未装工单插件时的
+ * 基线行为，占位与否由 flipTicket() 单独驱动。
+ */
+function occupancySource(initial = true, ticketInitial = false) {
   let occupied = initial
+  let ticketOccupied = ticketInitial
   const listeners = new Set<() => void>()
+  const ticketListeners = new Set<() => void>()
   const useDirectoryFlow = bindSnapshotSelector({
     getSnapshot: () => occupied,
     subscribe: (listener: () => void) => {
@@ -75,11 +93,23 @@ function occupancySource(initial = true) {
       return () => { listeners.delete(listener) }
     },
   })
+  const useTicketFlow = bindSnapshotSelector({
+    getSnapshot: () => ticketOccupied,
+    subscribe: (listener: () => void) => {
+      ticketListeners.add(listener)
+      return () => { ticketListeners.delete(listener) }
+    },
+  })
   return {
     useDirectoryFlow,
+    useTicketFlow,
     flip: (next: boolean) => {
       occupied = next
       for (const listener of [...listeners]) listener()
+    },
+    flipTicket: (next: boolean) => {
+      ticketOccupied = next
+      for (const listener of [...ticketListeners]) listener()
     },
   }
 }
@@ -107,6 +137,7 @@ function mount(
       onClose={onClose}
       createWorkspace={createWorkspace}
       useDirectoryFlow={occupancy.useDirectoryFlow}
+      useTicketFlow={occupancy.useTicketFlow}
       renderSlot={renderSlot}
       t={t}
     />
@@ -156,6 +187,23 @@ describe('WorkspacePicker', () => {
     expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
     expect(b.onClose).toHaveBeenCalled()
     expect(screen.getByTestId('directory-flow')).toBeTruthy()
+  })
+
+  it('offers both add sources when a ticket occupant is installed', () => {
+    const b = mount([workspace('alpha', 'Alpha')], vi.fn(), occupancySource(true, true))
+    // 装了两个来源时菜单必须给出选择，而不是替操作者决定。
+    fireEvent.click(screen.getByRole('menuitem', { name: '从工单号同步…' }))
+    expect(b.onClose).toHaveBeenCalled()
+    expect(screen.getByTestId('ticket-flow')).toBeTruthy()
+    expect(screen.queryByTestId('directory-flow')).toBeNull()
+  })
+
+  it('asks which add source when both are installed and nothing is listed', () => {
+    mount([], vi.fn(), occupancySource(true, true))
+    // 两个来源都在时锚点手势不再能替操作者选，菜单必须顶上来。
+    expect(screen.getByRole('menu')).toBeTruthy()
+    expect(screen.queryByTestId('directory-flow')).toBeNull()
+    expect(screen.queryByTestId('ticket-flow')).toBeNull()
   })
 
   it('treats flow cancellation as a silent no-op', () => {
@@ -227,7 +275,7 @@ describe('WorkspacePicker', () => {
         usePanelInfo={usePanelInfo} useResource={useResource}
         {...allowAllAccess}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
-        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+        useDirectoryFlow={occupancySource().useDirectoryFlow} useTicketFlow={occupancySource().useTicketFlow} renderSlot={renderSlot} t={t}
       />,
     )
     expect(screen.queryByRole('menu')).toBeNull()
@@ -246,7 +294,7 @@ describe('WorkspacePicker', () => {
         usePanelInfo={usePanelInfo} useResource={useResource}
         {...allowAllAccess}
         onPick={vi.fn()} onClose={vi.fn()} createWorkspace={vi.fn()}
-        useDirectoryFlow={occupancySource().useDirectoryFlow} renderSlot={renderSlot} t={t}
+        useDirectoryFlow={occupancySource().useDirectoryFlow} useTicketFlow={occupancySource().useTicketFlow} renderSlot={renderSlot} t={t}
       />,
     )
     // An empty list is not final yet: jumping into the directory flow here

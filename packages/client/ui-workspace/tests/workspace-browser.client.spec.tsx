@@ -136,6 +136,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
+    // 基线：未装工单插件时只有目录来源，锚点手势即直接开流程。
+    useTicketFlow: bindSnapshotSelector({ getSnapshot: () => false, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: renderDirectoryFlowOnly,
     t,
@@ -1892,10 +1894,27 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByTestId('directory-flow')).toBeTruthy()
   })
 
+  it('offers both add sources in the rail menu when a ticket occupant is composed', () => {
+    const expandSidebar = vi.fn()
+    mount({
+      wide: false,
+      expandSidebar,
+      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
+      useTicketFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '添加工作区' }))
+    expect(expandSidebar).not.toHaveBeenCalled()
+    // 两个来源都在时按钮不再能替操作者选，菜单必须顶上来。
+    expect(screen.getByRole('menuitem', { name: '添加工作区…' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: '从工单号同步…' })).toBeTruthy()
+    expect(screen.queryByTestId('directory-flow')).toBeNull()
+  })
+
   it('hides the add button when no directory-flow occupant is composed', () => {
     mount({
       useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
       useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => false, subscribe: () => () => {} }),
+      useTicketFlow: bindSnapshotSelector({ getSnapshot: () => false, subscribe: () => () => {} }),
     })
     // Nothing to add with, so the header offers no dead button.
     expect(screen.queryByRole('button', { name: '添加工作区' })).toBeNull()
